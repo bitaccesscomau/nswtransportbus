@@ -1,0 +1,43 @@
+services:
+  db:
+    image: imresamu/postgis:18-3.6-alpine
+    container_name: nswbus-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nswbus
+      POSTGRES_PASSWORD: nswbus
+      POSTGRES_DB: nswbus
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - '55432:5432'
+    volumes:
+      # Postgres 18 images keep PGDATA under /var/lib/postgresql/<major>/docker,
+      # so mount the parent directory rather than .../data.
+      - nswbus_pgdata:/var/lib/postgresql
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - work_mem=64MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - autovacuum_naptime=30s
+      - -c
+      - autovacuum_vacuum_scale_factor=0.02
+      - -c
+      - track_io_timing=on
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nswbus -d nswbus']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  nswbus_pgdata:

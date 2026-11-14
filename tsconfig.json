@@ -1,0 +1,23 @@
+{
+	"extends": "$app/tsconfig",
+	"compilerOptions": {
+		"target": "esnext",
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"types": ["$app/types", "node"],
+		"rootDirs": [".", "./.svelte-kit/types"],
+		"strict": true,
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"allowJs": true,
+		"checkJs": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"verbatimModuleSyntax": true,
+		"moduleDetection": "force",
+		"allowImportingTsExtensions": true,
+		"noEmit": true
+	},
+	"include": ["src", "scripts", "drizzle.config.ts", "vite.config.ts"]
+}

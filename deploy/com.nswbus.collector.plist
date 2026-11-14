@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.nswbus.collector</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/stefanosinden/.bun/bin/bun</string>
+		<string>run</string>
+		<string>scripts/collect.ts</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/stefanosinden/Development/nswtransportbus</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/Users/stefanosinden/Development/nswtransportbus/.data/collector.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/stefanosinden/Development/nswtransportbus/.data/collector.err.log</string>
+</dict>
+</plist>

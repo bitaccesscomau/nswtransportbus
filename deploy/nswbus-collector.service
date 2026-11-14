@@ -1,0 +1,15 @@
+[Unit]
+Description=NSW Bus live collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nswtransportbus
+ExecStart=/usr/local/bin/bun run scripts/collect.ts
+EnvironmentFile=/opt/nswtransportbus/.env
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
