@@ -74,6 +74,7 @@
 	let mode = $state<'live' | 'history'>('live');
 	let bounds = $state<{ min: number; max: number } | null>(null);
 	let playbackAt = $state(Date.now());
+	let historyEndInitialized = false;
 	let playing = $state(false);
 	let speed = $state(60);
 	let historyVehicles = $state<VehicleSnapshot[] | null>(null);
@@ -248,6 +249,17 @@
 
 			const next = { min: Date.parse(body.min), max: Date.parse(body.max) };
 			bounds = next;
+			if (data.isVercel) {
+				mode = 'history';
+				if (!historyEndInitialized) {
+					historyEndInitialized = true;
+					playbackAt = next.max;
+					void loadSnapshot(next.max);
+				} else {
+					playbackAt = Math.min(Math.max(playbackAt, next.min), next.max);
+				}
+				return;
+			}
 			if (mode === 'live') {
 				playbackAt = next.max;
 			} else {
@@ -290,6 +302,7 @@
 	}
 
 	function returnLive() {
+		if (data.isVercel) return;
 		mode = 'live';
 		playing = false;
 		historyVehicles = null;
@@ -540,6 +553,7 @@
 	}
 
 	onMount(() => {
+		if (data.isVercel) mode = 'history';
 		void refreshBounds();
 		void refreshRouteTypes();
 		void refreshTrafficIncidents();
@@ -1814,12 +1828,13 @@ bun run gtfs:import</pre>
 		value={playbackAt}
 		{playing}
 		{speed}
-		{mode}
+		mode={mode}
 		loading={loadingHistory}
 		onchange={handleScrub}
 		ontoggle={togglePlay}
 		onstep={step}
 		onspeed={(value) => (speed = value)}
 		onlive={returnLive}
+		liveDisabled={data.isVercel}
 	/>
 </div>

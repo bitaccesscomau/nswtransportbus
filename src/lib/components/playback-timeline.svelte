@@ -14,7 +14,8 @@
 		ontoggle,
 		onstep,
 		onspeed,
-		onlive
+		onlive,
+		liveDisabled = false
 	}: {
 		bounds: { min: number; max: number } | null;
 		value: number;
@@ -27,6 +28,7 @@
 		onstep: (seconds: number) => void;
 		onspeed: (speed: number) => void;
 		onlive: () => void;
+		liveDisabled?: boolean;
 	} = $props();
 
 	const timeFormat = new Intl.DateTimeFormat('en-AU', {
@@ -95,13 +97,19 @@
 					aria-label="Historical time"
 					class="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary disabled:cursor-not-allowed disabled:opacity-50"
 				/>
+				<div class="mt-0.5 flex justify-between text-[9px] leading-none text-muted-foreground tabular-nums">
+					<span>{bounds ? formatTime(bounds.min) : ''}</span>
+					<span>{bounds ? formatTime(bounds.max) : ''}</span>
+				</div>
 			</div>
 
 			<Button
 				size="sm"
 				variant={mode === 'live' ? 'default' : 'outline'}
 				onclick={onlive}
-				aria-label="Return to live vehicles"
+				disabled={liveDisabled}
+				title={liveDisabled ? 'Live feed is unavailable in this deployment' : undefined}
+				aria-label={liveDisabled ? 'Live feed unavailable' : 'Return to live vehicles'}
 			>
 				<Radio class="size-3.5" /> Live
 			</Button>
