@@ -368,3 +368,19 @@ Basemap © OpenStreetMap contributors, rendered by OpenFreeMap. This is an
 independent project and is not an official Transport for NSW publication.
 
 Do not commit `.env`; it contains your API key.
+
+## Deployment
+
+- **Public repository:** <https://github.com/bitaccesscomau/nswtransportbus>
+- **Vercel project:** `stefano-sindens-projects/nswtransportbus`
+- **Neon Postgres:** Launch plan, Sydney (`ap-southeast-2`), PostGIS enabled
+- **Vercel Functions:** `syd1` (Sydney), configured by `regions` in `vercel.json`
+- **Build:** Vercel runs the build in its default build region; Vercel does not expose
+  per-project build-region selection on this plan. Runtime functions and the database are
+  in Sydney.
+- **Data:** static timetable/road data plus the frozen historical dataset. The live
+  collector is not part of the deployment.
+
+The Vercel build uses `@sveltejs/adapter-vercel`; local builds still use
+`@sveltejs/adapter-node`. `DATABASE_URL` is supplied by the Neon integration. Serverless
+functions use a small connection pool.
