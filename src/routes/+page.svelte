@@ -36,7 +36,7 @@
 		FilterRoute,
 		FilterRouteType,
 		FilterSuburb,
-		RouteArrowGeometry,
+		RouteShapeBounds,
 		RouteServing,
 		SearchStop,
 		StopDetails
@@ -45,6 +45,9 @@
 		BusCongestionProperties,
 		HistoryBounds,
 		PassedStopProperties,
+		InsightKind,
+		InsightResult,
+		SimulationResult,
 		TrafficIncidentProperties,
 		VehicleSnapshot
 	} from '#lib/types.js';
@@ -63,6 +66,9 @@
 	let showStops = $state(true);
 	let showSuburbNames = $state(true);
 	let showSuburbShading = $state(false);
+	let showBusLanes = $state(false);
+	let showSpeedZones = $state(false);
+	let showClearways = $state(false);
 	let showLive = $state(true);
 	let liveFromStream = $state<number | null>(null);
 	let mode = $state<'live' | 'history'>('live');
@@ -79,9 +85,7 @@
 	let heatLoading = $state(false);
 	let heatError = $state<string | null>(null);
 	let selectedRoute = $state<RouteServing | null>(null);
-	let routeArrows = $state<FeatureCollection | null>(null);
 	let routeView = $state<{ bounds: [[number, number], [number, number]] } | null>(null);
-	let showRouteArrows = $state(true);
 	let passedStops = $state<FeatureCollection<Point, PassedStopProperties> | null>(null);
 	let showPassedStops = $state(true);
 	let suburbQuery = $state('');
@@ -100,6 +104,25 @@
 	let filterBounds = $state<[[number, number], [number, number]] | null>(null);
 	let filterStopCount = $state<number | null>(null);
 	let filterRouteCount = $state<number | null>(null);
+	let simScenario = $state<'none' | 'consolidate' | 'express'>('consolidate');
+	let simRadius = $state(100);
+	let simSkip = $state(3);
+	let simDwell = $state(20);
+	let simThreshold = $state(5);
+	let simLoading = $state(false);
+	let simError = $state<string | null>(null);
+	let simResult = $state<SimulationResult | null>(null);
+	let showSimStops = $state(true);
+	let simController: AbortController | null = null;
+	let insightKind = $state<InsightKind>('least-used');
+	let insightMinEvents = $state(50);
+	let insightMinTrips = $state(5);
+	let insightRadius = $state(100);
+	let insightLoading = $state(false);
+	let insightError = $state<string | null>(null);
+	let insightResult = $state<InsightResult | null>(null);
+	let showInsightStops = $state(true);
+	let insightController: AbortController | null = null;
 	let filterLoading = $state(false);
 	let filterError = $state<string | null>(null);
 	let filterRequest = 0;
@@ -113,6 +136,29 @@
 
 	const liveCount = $derived(liveFromStream ?? data.summary?.liveVehicles ?? 0);
 	const heatFeatures = $derived(buildHeatFeatures(heatStops));
+	const simulationStops = $derived.by(() => {
+		if (!simResult || !showSimStops) return null;
+		return {
+			type: 'FeatureCollection',
+			features: simResult.removedStops.map((stop) => ({
+				type: 'Feature',
+				geometry: { type: 'Point', coordinates: [stop.lon, stop.lat] },
+				properties: { stopId: stop.stopId, stopName: stop.stopName }
+			}))
+		} satisfies FeatureCollection<Point, { stopId: string; stopName: string }>;
+	});
+	const insightStops = $derived.by(() => {
+		const result = insightResult;
+		if (!result || !showInsightStops) return null;
+		return {
+			type: 'FeatureCollection',
+			features: result.rows.map((row) => ({
+				type: 'Feature',
+				geometry: { type: 'Point', coordinates: [row.lon, row.lat] },
+				properties: { kind: result.kind, label: row.label }
+			}))
+		} satisfies FeatureCollection<Point, { kind: string; label: string }>;
+	});
 	const heatTotal = $derived(heatStops.filter((stop) => metricValue(stop) > 0).length);
 	const nearbyDisruptions = $derived.by(() => {
 		const stop = selected;
@@ -596,14 +642,12 @@
 			selectedRoute.directionId === route.directionId
 		) {
 			selectedRoute = null;
-			routeArrows = null;
 			routeView = null;
 			passedStops = null;
 			return;
 		}
 
 		selectedRoute = route;
-		routeArrows = null;
 		routeView = null;
 		passedStops = null;
 	}
@@ -611,22 +655,8 @@
 	function clearStop() {
 		selected = null;
 		selectedRoute = null;
-		routeArrows = null;
 		routeView = null;
 		passedStops = null;
-	}
-
-	function buildArrowFeatures(geometry: RouteArrowGeometry): FeatureCollection {
-		return {
-			type: 'FeatureCollection',
-			features: [
-				{
-					type: 'Feature',
-					geometry: geometry.geometry,
-					properties: {}
-				}
-			]
-		};
 	}
 
 	$effect(() => {
@@ -657,36 +687,104 @@
 	$effect(() => {
 		const shapeId = selectedRoute?.shapeId;
 		if (!shapeId) {
-			routeArrows = null;
 			routeView = null;
 			return;
 		}
 
 		const controller = new AbortController();
-		void fetch(`/api/routes/arrows?shapeId=${encodeURIComponent(shapeId)}`, {
+		void fetch(`/api/routes/shape?shapeId=${encodeURIComponent(shapeId)}`, {
 			signal: controller.signal
 		})
 			.then(async (response) => {
-				if (!response.ok) throw new Error('arrow request failed');
-				return (await response.json()) as RouteArrowGeometry;
+				if (!response.ok) throw new Error('shape bounds request failed');
+				return (await response.json()) as RouteShapeBounds;
 			})
-			.then((geometry) => {
-				routeArrows = buildArrowFeatures(geometry);
-				routeView = { bounds: geometry.bounds };
+			.then((body) => {
+				routeView = { bounds: body.bounds };
 			})
 			.catch(() => {
-				if (!controller.signal.aborted) {
-					routeArrows = null;
-					routeView = null;
-				}
+				if (!controller.signal.aborted) routeView = null;
 			});
 
 		return () => controller.abort();
 	});
 
+	function handleSimScenarioChange() {
+		if (simScenario !== 'none') return;
+		simController?.abort();
+		simLoading = false;
+		simError = null;
+		simResult = null;
+	}
+
+	async function runSimulation() {
+		if (simScenario === 'none') return;
+		simController?.abort();
+		const controller = new AbortController();
+		simController = controller;
+		simLoading = true;
+		simError = null;
+
+		try {
+			const params = new URLSearchParams({
+				scenario: simScenario,
+				dwell: String(simDwell),
+				threshold: String(simThreshold * 60),
+				days: '7'
+			});
+			if (simScenario === 'consolidate') {
+				params.set('radius', String(simRadius));
+			} else {
+				params.set('skip', String(simSkip));
+			}
+
+			const response = await fetch(`/api/simulate?${params}`, {
+				signal: controller.signal
+			});
+			if (!response.ok) throw new Error('Simulation failed');
+			simResult = (await response.json()) as SimulationResult;
+		} catch (error) {
+			if (!controller.signal.aborted) {
+				simError = error instanceof Error ? error.message : 'Simulation failed';
+			}
+		} finally {
+			if (!controller.signal.aborted) simLoading = false;
+		}
+	}
+
+	async function runInsight() {
+		insightController?.abort();
+		const controller = new AbortController();
+		insightController = controller;
+		insightLoading = true;
+		insightError = null;
+
+		try {
+			const params = new URLSearchParams({ type: insightKind });
+			if (insightKind === 'least-used') {
+				params.set('minEvents', String(insightMinEvents));
+			} else if (insightKind === 'extension') {
+				params.set('minTrips', String(insightMinTrips));
+			} else {
+				params.set('radius', String(insightRadius));
+			}
+
+			const response = await fetch(`/api/insights?${params}`, {
+				signal: controller.signal
+			});
+			if (!response.ok) throw new Error('Analysis failed');
+			insightResult = (await response.json()) as InsightResult;
+		} catch (error) {
+			if (!controller.signal.aborted) {
+				insightError = error instanceof Error ? error.message : 'Analysis failed';
+			}
+		} finally {
+			if (!controller.signal.aborted) insightLoading = false;
+		}
+	}
+
 	async function selectStop(stopId: string, lat?: number, lon?: number) {
 		selectedRoute = null;
-		routeArrows = null;
 		routeView = null;
 		passedStops = null;
 
@@ -724,9 +822,9 @@
 					shapeId: selectedRoute?.shapeId ?? null
 				}
 			: null}
-		{routeArrows}
-		{showRouteArrows}
 		{routeView}
+		{simulationStops}
+		{insightStops}
 		{passedStops}
 		{showPassedStops}
 		smoothHistory={playing && mode === 'history'}
@@ -743,6 +841,9 @@
 		{showStops}
 		{showSuburbNames}
 		{showSuburbShading}
+		{showBusLanes}
+		{showSpeedZones}
+		{showClearways}
 		{showLive}
 		history={mode === 'history' ? historyVehicles : null}
 		paused={mode === 'history'}
@@ -815,6 +916,250 @@
 			</CardContent>
 		</Card>
 
+		<Card class="gap-2 py-3">
+			<CardContent class="space-y-2.5 px-3">
+				<p class="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+					<Gauge class="size-3" /> Simulation
+				</p>
+
+				<label class="flex items-center justify-between gap-3 text-sm">
+					<span>Scenario</span>
+					<select
+						bind:value={simScenario}
+						onchange={handleSimScenarioChange}
+						class="h-8 max-w-[190px] rounded-md border bg-background px-2 text-xs"
+					>
+						<option value="none">None</option>
+						<option value="consolidate">Consolidate nearby stops</option>
+						<option value="express">Express service</option>
+					</select>
+				</label>
+
+				{#if simScenario === 'consolidate'}
+					<label class="block space-y-1 text-xs">
+						<span class="flex justify-between">
+							<span>Stop radius</span>
+							<span class="tabular-nums text-muted-foreground">{simRadius} m</span>
+						</span>
+						<input
+							type="range"
+							min="5"
+							max="250"
+							step="5"
+							bind:value={simRadius}
+							class="w-full accent-violet-600"
+						/>
+					</label>
+					<p class="text-[10px] text-muted-foreground">
+						Keeps the stop nearest a traffic light, removes its opposite-direction
+						counterpart on the same route within 60 m, and never removes two
+						consecutive stops on a trip.
+					</p>
+				{:else if simScenario === 'express'}
+					<label class="block space-y-1 text-xs">
+						<span class="flex justify-between">
+							<span>Skip every</span>
+							<span class="tabular-nums text-muted-foreground">{simSkip}th stop</span>
+						</span>
+						<input
+							type="range"
+							min="2"
+							max="8"
+							step="1"
+							bind:value={simSkip}
+							class="w-full accent-violet-600"
+						/>
+					</label>
+				{:else}
+					<p class="text-xs text-muted-foreground">No simulation selected.</p>
+				{/if}
+
+				{#if simScenario !== 'none'}
+				<label class="block space-y-1 text-xs">
+					<span class="flex justify-between">
+						<span>Saved dwell per stop</span>
+						<span class="tabular-nums text-muted-foreground">{simDwell} s</span>
+					</span>
+					<input
+						type="range"
+						min="0"
+						max="60"
+						step="5"
+						bind:value={simDwell}
+						class="w-full accent-violet-600"
+					/>
+				</label>
+
+				<label class="block space-y-1 text-xs">
+					<span class="flex justify-between">
+						<span>On-time threshold</span>
+						<span class="tabular-nums text-muted-foreground">{simThreshold} min</span>
+					</span>
+					<input
+						type="range"
+						min="2"
+						max="10"
+						step="1"
+						bind:value={simThreshold}
+						class="w-full accent-violet-600"
+					/>
+				</label>
+
+				<Button onclick={runSimulation} disabled={simLoading} class="w-full" size="sm">
+					{simLoading ? 'Running simulation…' : 'Run simulation'}
+				</Button>
+
+				{#if simError}
+					<p class="text-xs text-destructive">{simError}</p>
+				{:else if simResult}
+					<div class="grid grid-cols-3 gap-1.5 text-center">
+						<div class="rounded-md bg-muted/60 px-1 py-1.5">
+							<div class="text-sm font-semibold tabular-nums">
+								{simResult.baselineTripOnTimePct.toFixed(1)}%
+							</div>
+							<div class="text-[10px] tracking-wide text-muted-foreground uppercase">Baseline</div>
+						</div>
+						<div class="rounded-md bg-muted/60 px-1 py-1.5">
+							<div class="text-sm font-semibold tabular-nums">
+								{simResult.simulatedTripOnTimePct.toFixed(1)}%
+							</div>
+							<div class="text-[10px] tracking-wide text-muted-foreground uppercase">Simulated</div>
+						</div>
+						<div class="rounded-md bg-muted/60 px-1 py-1.5">
+							<div
+								class="text-sm font-semibold tabular-nums"
+								class:text-emerald-600={simResult.simulatedTripOnTimePct >= simResult.baselineTripOnTimePct}
+								class:text-red-600={simResult.simulatedTripOnTimePct < simResult.baselineTripOnTimePct}
+							>
+								{simResult.simulatedTripOnTimePct >= simResult.baselineTripOnTimePct ? '+' : ''}
+								{(simResult.simulatedTripOnTimePct - simResult.baselineTripOnTimePct).toFixed(1)} pp
+							</div>
+							<div class="text-[10px] tracking-wide text-muted-foreground uppercase">Change</div>
+						</div>
+					</div>
+
+					<p class="text-[10px] text-muted-foreground">
+						{simResult.stopsRemoved} stops removed · {simResult.routesAffected} routes affected ·
+						{simResult.tripsAnalyzed} trips analysed
+					</p>
+					<p class="text-[10px] text-muted-foreground">
+						Route-level on-time: {simResult.baselineRouteOnTimePct.toFixed(1)}% →
+						{simResult.simulatedRouteOnTimePct.toFixed(1)}%
+						{#if simResult.avgSavedSeconds !== null}
+							· avg {Math.round(simResult.avgSavedSeconds)} s saved
+						{/if}
+					</p>
+					<label class="flex items-center justify-between gap-3 text-xs">
+						<span>Show removed stops</span>
+						<Switch bind:checked={showSimStops} />
+					</label>
+					<p class="text-[10px] text-muted-foreground">
+						Estimate: on-time = average trip delay ≤ {simThreshold} min; assumes {simDwell}s
+						saved per removed stop. Uses the last 7 days of available delay data, not a
+						timetable re-run.
+					</p>
+				{/if}
+				{/if}
+
+				<p class="text-[10px] text-muted-foreground">
+					Other scenario ideas: signal priority, bus-lane uplift, rerouting around slow
+					sections.
+				</p>
+			</CardContent>
+		</Card>
+
+		<Card class="gap-2 py-3">
+			<CardContent class="space-y-2.5 px-3">
+				<p class="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+					<Search class="size-3" /> Network insights
+				</p>
+
+				<label class="flex items-center justify-between gap-3 text-sm">
+					<span>Analysis</span>
+					<select
+						bind:value={insightKind}
+						class="h-8 max-w-[190px] rounded-md border bg-background px-2 text-xs"
+					>
+						<option value="least-used">Least-used proxy</option>
+						<option value="extension">Route extension candidates</option>
+						<option value="transfers">Transfer hotspots</option>
+					</select>
+				</label>
+
+				{#if insightKind === 'least-used'}
+					<label class="block space-y-1 text-xs">
+						<span class="flex justify-between">
+							<span>Min observed stops</span>
+							<span class="tabular-nums text-muted-foreground">{insightMinEvents}</span>
+						</span>
+						<input
+							type="range"
+							min="10"
+							max="200"
+							step="10"
+							bind:value={insightMinEvents}
+							class="w-full accent-violet-600"
+						/>
+					</label>
+				{:else if insightKind === 'extension'}
+					<label class="block space-y-1 text-xs">
+						<span class="flex justify-between">
+							<span>Min trips</span>
+							<span class="tabular-nums text-muted-foreground">{insightMinTrips}</span>
+						</span>
+						<input
+							type="range"
+							min="1"
+							max="50"
+							step="1"
+							bind:value={insightMinTrips}
+							class="w-full accent-violet-600"
+						/>
+					</label>
+				{:else}
+					<label class="block space-y-1 text-xs">
+						<span class="flex justify-between">
+							<span>Cluster radius</span>
+							<span class="tabular-nums text-muted-foreground">{insightRadius} m</span>
+						</span>
+						<input
+							type="range"
+							min="50"
+							max="300"
+							step="25"
+							bind:value={insightRadius}
+							class="w-full accent-violet-600"
+						/>
+					</label>
+				{/if}
+
+				<Button onclick={runInsight} disabled={insightLoading} class="w-full" size="sm">
+					{insightLoading ? 'Analysing…' : 'Run analysis'}
+				</Button>
+
+				{#if insightError}
+					<p class="text-xs text-destructive">{insightError}</p>
+				{:else if insightResult}
+					<div class="space-y-1">
+						{#each insightResult.rows.slice(0, 10) as row (row.id)}
+							<div class="flex items-start justify-between gap-2 text-xs">
+								<span class="min-w-0">
+									<span class="block truncate font-medium">{row.label}</span>
+									<span class="block text-[10px] text-muted-foreground">{row.detail}</span>
+								</span>
+								<span class="shrink-0 text-[10px] text-muted-foreground">{row.metric}</span>
+							</div>
+						{/each}
+					</div>
+					<p class="text-[10px] text-muted-foreground">{insightResult.note}</p>
+					<label class="flex items-center justify-between gap-3 text-xs">
+						<span>Show on map</span>
+						<Switch bind:checked={showInsightStops} />
+					</label>
+				{/if}
+			</CardContent>
+		</Card>
+
 		{#if selected}
 			<Card class="gap-2 py-3">
 				<CardHeader class="flex-row items-start justify-between gap-2 px-3">
@@ -857,14 +1202,14 @@
 
 					{#if selectedRoute}
 						<p class="text-[10px] text-muted-foreground">
-							Direction arrows and grey passed stops for
+							Grey passed stops for
 							{selectedRoute.shortName ?? selectedRoute.routeId}
 							{selectedRoute.directionId === 0 ? 'outbound' : 'inbound'}. Click the badge
 							again to clear.
 						</p>
 					{:else}
 						<p class="text-[10px] text-muted-foreground">
-							Click a route badge to show its direction arrows and grey passed stops.
+							Click a route badge to show its grey passed stops.
 						</p>
 					{/if}
 
@@ -1203,6 +1548,65 @@
 					</div>
 				{/if}
 				<label class="flex items-center justify-between gap-3 text-sm">
+					<span class="flex items-center gap-2"><Route class="size-3.5 text-muted-foreground" /> Bus lanes</span>
+					<Switch bind:checked={showBusLanes} />
+				</label>
+				{#if showBusLanes}
+					<div class="space-y-1">
+						<div class="flex flex-wrap gap-x-2.5 gap-y-1 text-[10px] text-muted-foreground">
+							<span class="flex items-center gap-1">
+								<span class="h-1 w-4 rounded-full bg-[#db2777]"></span> Bus lane
+							</span>
+							<span class="flex items-center gap-1">
+								<span class="h-1 w-4 rounded-full bg-[#f59e0b]"></span> HOV
+							</span>
+							<span class="flex items-center gap-1">
+								<span class="h-1 w-4 rounded-full bg-[#94a3b8]"></span> Unknown
+							</span>
+						</div>
+						<p class="text-[10px] text-muted-foreground">
+							TfNSW bus lanes (BU/BO); HOV lanes shown for context. Click a lane for road details.
+						</p>
+					</div>
+				{/if}
+				<label class="flex items-center justify-between gap-3 text-sm">
+					<span class="flex items-center gap-2"><Gauge class="size-3.5 text-muted-foreground" /> Speed zones</span>
+					<Switch bind:checked={showSpeedZones} />
+				</label>
+				{#if showSpeedZones}
+					<div class="space-y-1">
+						<div class="flex flex-wrap gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+							<span class="flex items-center gap-1"><span class="h-1 w-3 rounded-full bg-[#ea580c]"></span>40</span>
+							<span class="flex items-center gap-1"><span class="h-1 w-3 rounded-full bg-[#f59e0b]"></span>50</span>
+							<span class="flex items-center gap-1"><span class="h-1 w-3 rounded-full bg-[#eab308]"></span>60</span>
+							<span class="flex items-center gap-1"><span class="h-1 w-3 rounded-full bg-[#84cc16]"></span>70</span>
+							<span class="flex items-center gap-1"><span class="h-1 w-3 rounded-full bg-[#22c55e]"></span>80</span>
+							<span class="flex items-center gap-1"><span class="h-1 w-3 rounded-full bg-[#14b8a6]"></span>90</span>
+							<span class="flex items-center gap-1"><span class="h-1 w-3 rounded-full bg-[#3b82f6]"></span>100</span>
+							<span class="flex items-center gap-1"><span class="h-1 w-3 rounded-full bg-[#8b5cf6]"></span>110</span>
+							<span>km/h</span>
+						</div>
+						<p class="text-[10px] text-muted-foreground">
+							TfNSW speed zones; exact limit and zone type in the popup.
+						</p>
+					</div>
+				{/if}
+				<label class="flex items-center justify-between gap-3 text-sm">
+					<span class="flex items-center gap-2"><Route class="size-3.5 text-muted-foreground" /> Clearways</span>
+					<Switch bind:checked={showClearways} />
+				</label>
+				{#if showClearways}
+					<div class="space-y-1">
+						<span class="flex items-center gap-1 text-[10px] text-muted-foreground">
+							<span class="h-0.5 w-6 border-t-2 border-dashed border-[#0891b2]"></span>
+							Clearway hours
+						</span>
+						<p class="text-[10px] text-muted-foreground">
+							TfNSW clearways (2018; may be incomplete). Click a section for street and hours.
+						</p>
+					</div>
+				{/if}
+				<label class="flex items-center justify-between gap-3 text-sm">
 					<span class="flex items-center gap-2"><MapPin class="size-3.5 text-muted-foreground" /> Bus stops</span>
 					<Switch bind:checked={showStops} />
 				</label>
@@ -1217,10 +1621,6 @@
 				<label class="flex items-center justify-between gap-3 text-sm">
 					<span class="flex items-center gap-2"><Activity class="size-3.5 text-muted-foreground" /> Live vehicles</span>
 					<Switch bind:checked={showLive} />
-				</label>
-				<label class="flex items-center justify-between gap-3 text-sm">
-					<span class="flex items-center gap-2"><Route class="size-3.5 text-muted-foreground" /> Route arrows</span>
-					<Switch bind:checked={showRouteArrows} />
 				</label>
 				<label
 					class="flex items-center justify-between gap-3 text-sm"

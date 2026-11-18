@@ -22,7 +22,7 @@ export function getDb(): Db {
 		throw new Error('DATABASE_URL is not set. Copy .env.example to .env and restart the server.');
 	}
 
-	client = postgres(url, { max: 10, onnotice: () => {} });
+	client = postgres(url, { max: 3, onnotice: () => {} });
 	database = drizzle(client, { schema: fullSchema });
 	return database;
 }

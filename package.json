@@ -26,12 +26,16 @@
 		"busyness:derive": "bun scripts/derive-busyness.ts",
 		"suburbs:import": "bash scripts/import-suburbs.sh",
 		"traffic:import": "bun scripts/import-traffic-lights.ts",
-		"slowdowns:derive": "bun scripts/derive-slowdowns.ts"
+		"slowdowns:derive": "bun scripts/derive-slowdowns.ts",
+		"bus-lanes:import": "bash scripts/import-bus-lanes.sh",
+		"speed-zones:import": "bash scripts/import-speed-zones.sh",
+		"clearways:import": "bash scripts/import-clearways.sh"
 	},
 	"devDependencies": {
 		"@internationalized/date": "^3.12.4",
 		"@lucide/svelte": "^1.72.0",
 		"@sveltejs/adapter-node": "^6.0.2",
+		"@sveltejs/adapter-vercel": "^7.0.4",
 		"@sveltejs/kit": "^3.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.2.0",
 		"@tailwindcss/vite": "^4.3.5",

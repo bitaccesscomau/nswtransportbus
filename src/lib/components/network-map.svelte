@@ -48,14 +48,17 @@
 		showStops = true,
 		showSuburbNames = true,
 		showSuburbShading = false,
+		showBusLanes = false,
+		showSpeedZones = false,
+		showClearways = false,
 		showLive = true,
 		history = null,
 		paused = false,
 		busyness = null,
 		showBusyness = false,
-		routeArrows = null,
-		showRouteArrows = true,
 		routeView = null,
+		simulationStops = null,
+		insightStops = null,
 		filterStopIds = null,
 		filterRouteIds = null,
 		filterBounds = null,
@@ -77,14 +80,17 @@
 		showStops?: boolean;
 		showSuburbNames?: boolean;
 		showSuburbShading?: boolean;
+		showBusLanes?: boolean;
+		showSpeedZones?: boolean;
+		showClearways?: boolean;
 		showLive?: boolean;
 		history?: VehicleSnapshot[] | null;
 		paused?: boolean;
 		busyness?: FeatureCollection | null;
 		showBusyness?: boolean;
-		routeArrows?: FeatureCollection | null;
-		showRouteArrows?: boolean;
 		routeView?: { bounds: [[number, number], [number, number]] } | null;
+		simulationStops?: FeatureCollection<Point, { stopId: string; stopName: string }> | null;
+		insightStops?: FeatureCollection<Point, { kind: string; label: string }> | null;
 		filterStopIds?: string[] | null;
 		filterRouteIds?: string[] | null;
 		filterBounds?: [[number, number], [number, number]] | null;
@@ -301,6 +307,128 @@
 			}
 		});
 
+		instance.addSource('speed-zones', {
+			type: 'vector',
+			tiles: [`${origin}/api/tiles/speed-zones/{z}/{x}/{y}`],
+			minzoom: 9,
+			maxzoom: 22
+		});
+		instance.addLayer({
+			id: 'speed-zones',
+			type: 'line',
+			source: 'speed-zones',
+			'source-layer': 'speed_zones',
+			layout: {
+				visibility: 'none',
+				'line-cap': 'round',
+				'line-join': 'round'
+			},
+			paint: {
+				'line-color': [
+					'match',
+					['get', 'speed_limit'],
+					10,
+					'#7f1d1d',
+					20,
+					'#b91c1c',
+					30,
+					'#dc2626',
+					40,
+					'#ea580c',
+					50,
+					'#f59e0b',
+					60,
+					'#eab308',
+					70,
+					'#84cc16',
+					80,
+					'#22c55e',
+					90,
+					'#14b8a6',
+					100,
+					'#3b82f6',
+					110,
+					'#8b5cf6',
+					'#94a3b8'
+				],
+				'line-width': ['interpolate', ['linear'], ['zoom'], 9, 1.5, 13, 2.5, 17, 4],
+				'line-opacity': 0.85
+			}
+		});
+
+		instance.addSource('bus-lanes', {
+			type: 'vector',
+			tiles: [`${origin}/api/tiles/bus-lanes/{z}/{x}/{y}?v=2`],
+			minzoom: 9,
+			maxzoom: 22
+		});
+		instance.addLayer({
+			id: 'bus-lanes-casing',
+			type: 'line',
+			source: 'bus-lanes',
+			'source-layer': 'bus_lanes',
+			layout: {
+				visibility: 'none',
+				'line-cap': 'round',
+				'line-join': 'round'
+			},
+			paint: {
+				'line-color': '#ffffff',
+				'line-width': ['interpolate', ['linear'], ['zoom'], 9, 4, 13, 7, 17, 11],
+				'line-opacity': 0.85
+			}
+		});
+		instance.addLayer({
+			id: 'bus-lanes',
+			type: 'line',
+			source: 'bus-lanes',
+			'source-layer': 'bus_lanes',
+			layout: {
+				visibility: 'none',
+				'line-cap': 'round',
+				'line-join': 'round'
+			},
+			paint: {
+				'line-color': [
+					'match',
+					['get', 'lane_type'],
+					'BU',
+					'#db2777',
+					'BO',
+					'#db2777',
+					'HO',
+					'#f59e0b',
+					'#94a3b8'
+				],
+				'line-width': ['interpolate', ['linear'], ['zoom'], 9, 2, 13, 4, 17, 7],
+				'line-opacity': 0.95
+			}
+		});
+
+		instance.addSource('clearways', {
+			type: 'vector',
+			tiles: [`${origin}/api/tiles/clearways/{z}/{x}/{y}`],
+			minzoom: 9,
+			maxzoom: 22
+		});
+		instance.addLayer({
+			id: 'clearways',
+			type: 'line',
+			source: 'clearways',
+			'source-layer': 'clearways',
+			layout: {
+				visibility: 'none',
+				'line-cap': 'round',
+				'line-join': 'round'
+			},
+			paint: {
+				'line-color': '#0891b2',
+				'line-width': ['interpolate', ['linear'], ['zoom'], 9, 3, 13, 5, 17, 8],
+				'line-opacity': 0.9,
+				'line-dasharray': [2, 1.5]
+			}
+		});
+
 		instance.addSource('suburbs', {
 			type: 'vector',
 			tiles: [`${origin}/api/tiles/suburbs/{z}/{x}/{y}`],
@@ -429,46 +557,48 @@
 			}
 		});
 
-		if (!instance.hasImage('route-triangle')) {
-			const arrowCanvas = document.createElement('canvas');
-			arrowCanvas.width = 32;
-			arrowCanvas.height = 32;
-			const arrowContext = arrowCanvas.getContext('2d');
-			if (arrowContext) {
-				arrowContext.beginPath();
-				arrowContext.moveTo(3, 4);
-				arrowContext.lineTo(29, 16);
-				arrowContext.lineTo(3, 28);
-				arrowContext.closePath();
-				arrowContext.fillStyle = '#ffffff';
-				arrowContext.fill();
-				arrowContext.lineWidth = 2;
-				arrowContext.strokeStyle = '#7c3aed';
-				arrowContext.stroke();
-				instance.addImage(
-					'route-triangle',
-					arrowContext.getImageData(0, 0, 32, 32),
-					{ pixelRatio: 2 }
-				);
-			}
-		}
-
-		instance.addSource('route-arrows', { type: 'geojson', data: empty });
+		instance.addSource('simulation-stops', { type: 'geojson', data: empty });
 		instance.addLayer({
-			id: 'route-arrows',
-			type: 'symbol',
-			source: 'route-arrows',
-			layout: {
-				visibility: 'none',
-				'symbol-placement': 'line',
-				'symbol-spacing': 120,
-				'icon-image': 'route-triangle',
-				'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.2, 12, 0.35, 16, 0.65],
-				'icon-allow-overlap': true,
-				'icon-ignore-placement': true
-			},
-			paint: { 'icon-opacity': 0.95 }
+			id: 'simulation-stops',
+			type: 'circle',
+			source: 'simulation-stops',
+			minzoom: 9,
+			layout: { visibility: 'none' },
+			paint: {
+				'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 2.5, 13, 4.5, 17, 7],
+				'circle-color': '#ef4444',
+				'circle-opacity': 0.85,
+				'circle-stroke-color': '#ffffff',
+				'circle-stroke-width': 1.2
+			}
 		});
+
+		instance.addSource('insight-stops', { type: 'geojson', data: empty });
+		instance.addLayer({
+			id: 'insight-stops',
+			type: 'circle',
+			source: 'insight-stops',
+			minzoom: 9,
+			layout: { visibility: 'none' },
+			paint: {
+				'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 3, 13, 5, 17, 8],
+				'circle-color': [
+					'match',
+					['get', 'kind'],
+					'least-used',
+					'#f97316',
+					'extension',
+					'#0ea5e9',
+					'transfers',
+					'#8b5cf6',
+					'#94a3b8'
+				],
+				'circle-opacity': 0.9,
+				'circle-stroke-color': '#ffffff',
+				'circle-stroke-width': 1.3
+			}
+		});
+
 		instance.addSource('passed-stops', { type: 'geojson', data: empty });
 		instance.addLayer({
 			id: 'passed-stops',
@@ -752,6 +882,111 @@
 			instance.getCanvas().style.cursor = 'pointer';
 		});
 		instance.on('mouseleave', 'slowdowns', () => {
+			instance.getCanvas().style.cursor = '';
+		});
+
+		instance.on('click', 'bus-lanes', (event) => {
+			const feature = event.features?.[0];
+			if (!feature) return;
+			const lane = feature.properties as {
+				road_name?: string | null;
+				lane_type?: string | null;
+				operating?: string | null;
+				length_m?: number;
+			};
+			const type =
+				lane.lane_type === 'BU'
+					? 'Bus lane'
+					: lane.lane_type === 'BO'
+						? 'Bus only (24h)'
+						: lane.lane_type === 'HO'
+							? 'HOV lane (T2/T3)'
+							: 'Unknown lane type';
+			const road = lane.road_name ?? 'Unnamed road';
+			const operating = lane.operating ? ` · ${lane.operating}` : '';
+			const length = lane.length_m ? ` · ${Math.round(Number(lane.length_m))} m` : '';
+
+			new Popup({ closeButton: false, offset: 10, maxWidth: '280px' })
+				.setLngLat(event.lngLat)
+				.setHTML(
+					`<div style="font-size:12px;line-height:1.5"><strong>${escapeHtml(road)}</strong><br/>` +
+						`${escapeHtml(type)}${escapeHtml(operating)}${escapeHtml(length)}</div>`
+				)
+				.addTo(instance);
+		});
+		instance.on('mouseenter', 'bus-lanes', () => {
+			instance.getCanvas().style.cursor = 'pointer';
+		});
+		instance.on('mouseleave', 'bus-lanes', () => {
+			instance.getCanvas().style.cursor = '';
+		});
+
+		instance.on('click', 'speed-zones', (event) => {
+			const feature = event.features?.[0];
+			if (!feature) return;
+			const zone = feature.properties as {
+				speed_limit?: number;
+				zone_type?: string | null;
+				status?: string | null;
+				direction?: string | null;
+			};
+			const limit = zone.speed_limit ? `${Number(zone.speed_limit)} km/h` : 'Unknown limit';
+			const type = zone.zone_type ?? 'Speed zone';
+			const status = zone.status ? ` · ${zone.status}` : '';
+			const direction = zone.direction ? ` · ${zone.direction}` : '';
+
+			new Popup({ closeButton: false, offset: 10, maxWidth: '260px' })
+				.setLngLat(event.lngLat)
+				.setHTML(
+					`<div style="font-size:12px;line-height:1.5"><strong>${escapeHtml(limit)}</strong><br/>` +
+						`<span style="color:#6b7280">${escapeHtml(type)}${escapeHtml(status)}${escapeHtml(direction)}</span></div>`
+				)
+				.addTo(instance);
+		});
+		instance.on('mouseenter', 'speed-zones', () => {
+			instance.getCanvas().style.cursor = 'pointer';
+		});
+		instance.on('mouseleave', 'speed-zones', () => {
+			instance.getCanvas().style.cursor = '';
+		});
+
+		instance.on('click', 'clearways', (event) => {
+			const feature = event.features?.[0];
+			if (!feature) return;
+			const clearway = feature.properties as {
+				street_name?: string | null;
+				suburb?: string | null;
+				direction?: string | null;
+				peak?: string | null;
+				transit_lane?: string | null;
+				bus_lane_hours?: string | null;
+				clearway_hours?: string | null;
+				length_m?: number;
+			};
+			const street = clearway.street_name ?? 'Unnamed street';
+			const suburb = clearway.suburb ? `, ${clearway.suburb}` : '';
+			const details = [
+				clearway.clearway_hours ? `Clearway: ${clearway.clearway_hours}` : null,
+				clearway.bus_lane_hours ? `Bus lane: ${clearway.bus_lane_hours}` : null,
+				clearway.transit_lane ? `Transit: ${clearway.transit_lane}` : null,
+				clearway.direction ? `Direction: ${clearway.direction}` : null,
+				clearway.length_m ? `${Math.round(Number(clearway.length_m))} m` : null
+			]
+				.filter(Boolean)
+				.join(' · ');
+
+			new Popup({ closeButton: false, offset: 10, maxWidth: '280px' })
+				.setLngLat(event.lngLat)
+				.setHTML(
+					`<div style="font-size:12px;line-height:1.5"><strong>${escapeHtml(street)}${escapeHtml(suburb)}</strong><br/>` +
+						`<span style="color:#6b7280">${escapeHtml(details)}</span></div>`
+				)
+				.addTo(instance);
+		});
+		instance.on('mouseenter', 'clearways', () => {
+			instance.getCanvas().style.cursor = 'pointer';
+		});
+		instance.on('mouseleave', 'clearways', () => {
 			instance.getCanvas().style.cursor = '';
 		});
 
@@ -1062,22 +1297,6 @@
 	});
 
 	$effect(() => {
-		if (!map || !styleReady) return;
-		(map.getSource('route-arrows') as GeoJSONSource | undefined)?.setData(
-			routeArrows ?? empty
-		);
-	});
-
-	$effect(() => {
-		if (!map || !styleReady) return;
-		map.setLayoutProperty(
-			'route-arrows',
-			'visibility',
-			showRouteArrows && routeArrows ? 'visible' : 'none'
-		);
-	});
-
-	$effect(() => {
 		if (!map || !styleReady || !routeView) return;
 
 		const desktop = window.matchMedia('(min-width: 768px)').matches;
@@ -1107,6 +1326,31 @@
 	});
 
 	$effect(() => {
+		if (!map || !styleReady) return;
+		const visibility = showBusLanes ? 'visible' : 'none';
+		map.setLayoutProperty('bus-lanes-casing', 'visibility', visibility);
+		map.setLayoutProperty('bus-lanes', 'visibility', visibility);
+	});
+
+	$effect(() => {
+		if (!map || !styleReady) return;
+		map.setLayoutProperty(
+			'speed-zones',
+			'visibility',
+			showSpeedZones ? 'visible' : 'none'
+		);
+	});
+
+	$effect(() => {
+		if (!map || !styleReady) return;
+		map.setLayoutProperty(
+			'clearways',
+			'visibility',
+			showClearways ? 'visible' : 'none'
+		);
+	});
+
+	$effect(() => {
 		if (!styleReady || busyness === null) return;
 		busynessSource?.setData(busyness);
 	});
@@ -1120,6 +1364,30 @@
 	$effect(() => {
 		if (!styleReady) return;
 		passedStopsSource?.setData(passedStops ?? empty);
+	});
+
+	$effect(() => {
+		if (!map || !styleReady) return;
+		(map.getSource('simulation-stops') as GeoJSONSource | undefined)?.setData(
+			simulationStops ?? empty
+		);
+		map.setLayoutProperty(
+			'simulation-stops',
+			'visibility',
+			simulationStops ? 'visible' : 'none'
+		);
+	});
+
+	$effect(() => {
+		if (!map || !styleReady) return;
+		(map.getSource('insight-stops') as GeoJSONSource | undefined)?.setData(
+			insightStops ?? empty
+		);
+		map.setLayoutProperty(
+			'insight-stops',
+			'visibility',
+			insightStops ? 'visible' : 'none'
+		);
 	});
 
 	$effect(() => {

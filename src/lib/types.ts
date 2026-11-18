@@ -49,3 +49,50 @@ export interface PassedStopProperties {
 	stopName: string;
 	meters: number;
 }
+
+export interface SimulationRemovedStop {
+	stopId: string;
+	stopName: string;
+	lat: number;
+	lon: number;
+}
+
+export interface SimulationResult {
+	scenario: 'consolidate' | 'express';
+	parameters: {
+		radiusMeters?: number;
+		skipEvery?: number;
+		dwellSeconds: number;
+		onTimeThresholdSeconds: number;
+		windowDays: number;
+	};
+	tripsAnalyzed: number;
+	baselineOnTimeTrips: number;
+	simulatedOnTimeTrips: number;
+	baselineTripOnTimePct: number;
+	simulatedTripOnTimePct: number;
+	baselineRouteOnTimePct: number;
+	simulatedRouteOnTimePct: number;
+	stopsRemoved: number;
+	routesAffected: number;
+	avgSavedSeconds: number | null;
+	removedStops: SimulationRemovedStop[];
+}
+
+export type InsightKind = 'least-used' | 'extension' | 'transfers';
+
+export interface InsightRow {
+	id: string;
+	label: string;
+	lat: number;
+	lon: number;
+	detail: string;
+	metric: string;
+}
+
+export interface InsightResult {
+	kind: InsightKind;
+	parameters: Record<string, number>;
+	rows: InsightRow[];
+	note: string;
+}

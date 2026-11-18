@@ -189,8 +189,8 @@ signal-state feed. Refresh it with `bun run traffic:import`.
 
 ## Route inspection
 
-Clicking a route badge in the stop card highlights that exact shape, fits the map to it, and
-draws direction arrows along the shape. The **Passed stops (grey)** toggle in
+Clicking a route badge in the stop card highlights that exact shape and fits the map to it.
+The **Passed stops (grey)** toggle in
 Layers (enabled only when a route is selected, on by default) adds stops within 30 m of the
 selected shape that are **not** served by trips using that shape. They are drawn as grey dots
 matching the regular stop markers; click one to open its stop card. This is shape-specific: a stop served by another
@@ -209,6 +209,27 @@ time per kilometre. The scale is calibrated from the active feed's 5th–95th pe
 (1.4–4.2 min/km; median 2.5), with green faster and red slower. It is a
 scheduled-timetable view, not live congestion. The underlying `route_paces` materialized
 view is refreshed by `bun run gtfs:import`.
+
+## Bus lanes
+
+The **Bus lanes** toggle overlays the TfNSW Bus Lanes dataset on the map. It covers the
+Greater Sydney metro area, Newcastle and Wollongong, with road name, operating hours and
+lane type in the click popup. Pink sections are bus lanes or 24-hour bus-only lanes
+(BU/BO); amber sections are HOV lanes (HO) included for context. The snapshot is from the
+TfNSW Bus Lanes release; refresh it with `bun run bus-lanes:import`.
+
+## Speed zones and clearways
+
+Two independent Layers settings add road controls:
+
+- **Speed zones** colours TfNSW speed-limit lines by limit (40–110 km/h in the legend;
+  exact limit and zone type in the popup).
+- **Clearways** shows TfNSW clearway sections as dashed cyan lines, with street, clearway
+  hours and bus/transit-lane details in the popup.
+
+The speed-zone snapshot is the current TfNSW release; the clearways snapshot is from 2018
+and TfNSW notes it may be incomplete. Refresh them with `bun run speed-zones:import` and
+`bun run clearways:import`.
 
 ## Slowdown hotspots
 
@@ -323,6 +344,9 @@ The data model is intentionally analysis-ready:
 | `bun run gtfs:import` | Download and import the static bus bundle |
 | `bun run suburbs:import` | Download and import ABS suburb boundaries |
 | `bun run traffic:import` | Download and import TfNSW traffic-light locations |
+| `bun run bus-lanes:import` | Download and import TfNSW bus lanes |
+| `bun run speed-zones:import` | Download and import TfNSW speed zones |
+| `bun run clearways:import` | Download and import TfNSW clearways |
 | `bun run collect` | Run the live collector and busyness derivation |
 | `bun run busyness:derive` | Backfill stop busyness events (default 1 day) |
 | `bun run slowdowns:derive` | Refresh observed road-section slowdowns |
@@ -337,6 +361,9 @@ Contains data sourced from Transport for NSW under [CC BY 4.0](https://creativec
 Suburb boundaries: ABS Suburbs and Localities 2021, © Commonwealth of Australia (ABS),
 CC BY 4.0. Traffic incidents: Live Traffic NSW / Transport for NSW, CC BY 4.0.
 Traffic lights: Transport for NSW Open Data Hub, Traffic Lights Location, CC BY 4.0.
+Bus lanes: Transport for NSW Open Data Hub, Bus Lanes, CC BY 4.0.
+Speed zones: Transport for NSW Open Data Hub, Speed Zones, CC BY 4.0.
+Clearways: Transport for NSW Open Data Hub, NSW Clearways, CC BY 4.0.
 Basemap © OpenStreetMap contributors, rendered by OpenFreeMap. This is an
 independent project and is not an official Transport for NSW publication.
 

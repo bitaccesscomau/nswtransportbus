@@ -567,17 +567,15 @@ export async function busynessHeatmap(dow: number, hour: number): Promise<Busyne
 }
 
 
-export interface RouteArrowGeometry {
+export interface RouteShapeBounds {
 	shapeId: string;
-	geometry: { type: 'LineString'; coordinates: [number, number][] };
 	bounds: [[number, number], [number, number]];
 }
 
-export async function routeArrowGeometry(shapeId: string): Promise<RouteArrowGeometry | null> {
+export async function routeShapeBounds(shapeId: string): Promise<RouteShapeBounds | null> {
 	const db = getDb();
 	const rows = await rawQuery<{
 		shapeId: string;
-		geometryJson: string | null;
 		west: number | null;
 		south: number | null;
 		east: number | null;
@@ -595,7 +593,6 @@ export async function routeArrowGeometry(shapeId: string): Promise<RouteArrowGeo
 			)
 			select
 				l.shape_id as "shapeId",
-				st_asgeojson(l.geom) as "geometryJson",
 				st_xmin(b.extent) as "west",
 				st_ymin(b.extent) as "south",
 				st_xmax(b.extent) as "east",
@@ -607,7 +604,6 @@ export async function routeArrowGeometry(shapeId: string): Promise<RouteArrowGeo
 	const row = rows[0];
 	if (
 		!row ||
-		!row.geometryJson ||
 		row.west === null ||
 		row.south === null ||
 		row.east === null ||
@@ -618,10 +614,6 @@ export async function routeArrowGeometry(shapeId: string): Promise<RouteArrowGeo
 
 	return {
 		shapeId: row.shapeId,
-		geometry: JSON.parse(row.geometryJson) as {
-			type: 'LineString';
-			coordinates: [number, number][];
-		},
 		bounds: [
 			[row.west, row.south],
 			[row.east, row.north]
