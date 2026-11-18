@@ -8,8 +8,10 @@ export interface VehicleSnapshot {
 	bearing: number | null;
 	speedMps: number | null;
 	currentStatus: string | null;
+	currentStopSequence: number | null;
 	occupancy: string | null;
 	observedAt: string | Date;
+	tripProgress: number | null;
 	delayS: number | null;
 }
 

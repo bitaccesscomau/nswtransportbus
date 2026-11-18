@@ -53,6 +53,7 @@
 		showSpeedZones = false,
 		showClearways = false,
 		showLive = true,
+		showProgressRing = true,
 		history = null,
 		paused = false,
 		busyness = null,
@@ -85,6 +86,7 @@
 		showSpeedZones?: boolean;
 		showClearways?: boolean;
 		showLive?: boolean;
+		showProgressRing?: boolean;
 		history?: VehicleSnapshot[] | null;
 		paused?: boolean;
 		busyness?: FeatureCollection | null;
@@ -155,6 +157,11 @@
 		}
 	}
 
+	function progressBucket(progress: number | null | undefined): number {
+		if (progress === null || progress === undefined) return 0;
+		return Math.max(0, Math.min(36, Math.round(progress * 36)));
+	}
+
 	function occupancyLabel(occupancy: string | null | undefined): string {
 		switch (occupancy) {
 			case 'MANY_SEATS_AVAILABLE':
@@ -202,6 +209,72 @@
 		['+', 6, ['*', ['get', 'fullnessRank'], 1.5]]
 	] as unknown as ExpressionSpecification;
 
+	const RING_STEPS = 36;
+	const RING_RADIUS = 24;
+	const RING_IMAGE_SIZE = 64;
+	const RING_BASE_CSS_RADIUS = RING_RADIUS / 2;
+	const tripRingSize = [
+		'interpolate',
+		['linear'],
+		['zoom'],
+		8,
+		['/', ['+', ['+', 2.5, ['*', ['get', 'fullnessRank'], 0.55]], 2], RING_BASE_CSS_RADIUS],
+		13,
+		['/', ['+', ['+', 4, ['*', ['get', 'fullnessRank'], 1]], 2], RING_BASE_CSS_RADIUS],
+		18,
+		['/', ['+', ['+', 6, ['*', ['get', 'fullnessRank'], 1.5]], 2], RING_BASE_CSS_RADIUS]
+	] as unknown as ExpressionSpecification;
+	const tripRingImage = [
+		'match',
+		['get', 'progressBucket'],
+		...Array.from({ length: RING_STEPS + 1 }, (_, step) => [step, `trip-ring-${step}`]).flat(),
+		'trip-ring-0'
+	] as unknown as ExpressionSpecification;
+
+	function addTripRingImages(instance: MapLibreMap) {
+		for (let step = 0; step <= RING_STEPS; step += 1) {
+			const canvas = document.createElement('canvas');
+			canvas.width = RING_IMAGE_SIZE;
+			canvas.height = RING_IMAGE_SIZE;
+			const context = canvas.getContext('2d');
+			if (!context) return;
+
+			const center = RING_IMAGE_SIZE / 2;
+			context.beginPath();
+			context.arc(center, center, RING_RADIUS, 0, Math.PI * 2);
+			context.strokeStyle = 'rgba(15,23,42,0.55)';
+			context.lineWidth = 7;
+			context.stroke();
+
+			context.beginPath();
+			context.arc(center, center, RING_RADIUS, 0, Math.PI * 2);
+			context.strokeStyle = 'rgba(255,255,255,0.25)';
+			context.lineWidth = 4;
+			context.stroke();
+
+			if (step > 0) {
+				context.beginPath();
+				context.arc(
+					center,
+					center,
+					RING_RADIUS,
+					-Math.PI / 2,
+					-Math.PI / 2 + (Math.PI * 2 * step) / RING_STEPS
+				);
+				context.strokeStyle = '#ffffff';
+				context.lineWidth = 4;
+				context.lineCap = 'butt';
+				context.stroke();
+			}
+
+			instance.addImage(
+				`trip-ring-${step}`,
+				context.getImageData(0, 0, RING_IMAGE_SIZE, RING_IMAGE_SIZE),
+				{ pixelRatio: 2 }
+			);
+		}
+	}
+
 	function featuresFrom(
 		vehicles: Map<string, VehicleSnapshot>,
 		positions: Map<string, { lat: number; lon: number }>
@@ -216,7 +289,8 @@
 					properties: {
 						...vehicle,
 						delayClass: delayClass(vehicle.delayS),
-						fullnessRank: fullnessRank(vehicle.occupancy)
+						fullnessRank: fullnessRank(vehicle.occupancy),
+						progressBucket: progressBucket(vehicle.tripProgress)
 					}
 				};
 			})
@@ -295,7 +369,8 @@
 				properties: {
 					...vehicle,
 					delayClass: delayClass(vehicle.delayS),
-					fullnessRank: fullnessRank(vehicle.occupancy)
+					fullnessRank: fullnessRank(vehicle.occupancy),
+					progressBucket: progressBucket(vehicle.tripProgress)
 				}
 			}))
 		};
@@ -312,6 +387,7 @@
 
 	function addSourcesAndLayers(instance: MapLibreMap) {
 		const origin = window.location.origin;
+		addTripRingImages(instance);
 
 		instance.addSource('shapes', {
 			type: 'vector',
@@ -830,6 +906,19 @@
 		});
 
 		instance.addLayer({
+			id: 'live-progress',
+			type: 'symbol',
+			source: 'live',
+			layout: {
+				'icon-image': tripRingImage,
+				'icon-size': tripRingSize,
+				'icon-anchor': 'center',
+				'icon-allow-overlap': true,
+				'icon-ignore-placement': true
+			}
+		});
+
+		instance.addLayer({
 			id: 'live',
 			type: 'circle',
 			source: 'live',
@@ -837,8 +926,8 @@
 				'circle-radius': liveRadius,
 				'circle-color': delayColor,
 				'circle-opacity': 0.95,
-				'circle-stroke-color': '#ffffff',
-				'circle-stroke-width': 1.5
+				'circle-stroke-color': 'rgba(255,255,255,0.25)',
+				'circle-stroke-width': 1
 			}
 		});
 
@@ -1100,6 +1189,10 @@
 							? `${Math.floor(-delay / 60)} min early`
 							: 'On time';
 			const fullness = occupancyLabel(vehicle.occupancy);
+			const progressText =
+				vehicle.tripProgress === null || vehicle.tripProgress === undefined
+					? 'Trip progress unknown'
+					: `${Math.round(vehicle.tripProgress * 100)}% through trip`;
 
 			const nearby = (incidents?.features ?? [])
 				.map((incident) => {
@@ -1138,6 +1231,7 @@
 						`Vehicle ${escapeHtml(vehicle.vehicleId ?? '—')}<br/>` +
 						`${escapeHtml(delayText)}<br/>` +
 						`Fullness: ${escapeHtml(fullness)}<br/>` +
+						`${escapeHtml(progressText)}<br/>` +
 						`Seen ${escapeHtml(seen)}` +
 						`<div style="margin-top:6px;border-top:1px solid #e5e7eb;padding-top:4px">` +
 						`<strong>Nearby disruptions</strong><br/>${disruptionHtml}</div></div>`
@@ -1486,6 +1580,10 @@
 		if (!map || !styleReady) return;
 		map.setFilter('shapes', filterRouteIds ? inFilter('route_id', filterRouteIds) : null);
 		map.setFilter('live', filterRouteIds ? inFilter('routeId', filterRouteIds) : null);
+		map.setFilter(
+			'live-progress',
+			filterRouteIds ? inFilter('routeId', filterRouteIds) : null
+		);
 	});
 
 	$effect(() => {
@@ -1501,11 +1599,23 @@
 
 	$effect(() => {
 		if (!map || !styleReady) return;
+		const liveVisibility = showLive && !showBusyness ? 'visible' : 'none';
+		map.setLayoutProperty('live', 'visibility', liveVisibility);
 		map.setLayoutProperty(
-			'live',
+			'live-progress',
 			'visibility',
-			showLive && !showBusyness ? 'visible' : 'none'
+			showLive && !showBusyness && showProgressRing ? 'visible' : 'none'
 		);
+	});
+
+	$effect(() => {
+		if (!map || !styleReady) return;
+		map.setPaintProperty(
+			'live',
+			'circle-stroke-color',
+			showProgressRing ? 'rgba(255,255,255,0.25)' : '#ffffff'
+		);
+		map.setPaintProperty('live', 'circle-stroke-width', showProgressRing ? 1 : 1.5);
 	});
 
 	$effect(() => {

@@ -183,6 +183,48 @@ export async function searchStops(query: string, limit = 8): Promise<SearchStop[
 	`);
 }
 
+export interface CoverageStop {
+	stopId: string;
+	stopName: string;
+	lat: number;
+	lon: number;
+}
+
+export async function coverageStops(activeAt: Date | null): Promise<CoverageStop[]> {
+	const db = getDb();
+	const activeIds = activeAt ? await activeRouteIds(activeAt) : null;
+	if (activeIds && activeIds.length === 0) return [];
+
+	const rows = await rawQuery<CoverageStop>(
+		db,
+		sql`
+			select
+				s.stop_id as "stopId",
+				s.stop_name as "stopName",
+				s.stop_lat as lat,
+				s.stop_lon as lon
+			from stops s
+			where s.feed_version_id = active_feed_version()
+				${
+					activeIds
+						? sql`and exists (
+							select 1
+							from stop_times st
+							join trips t
+								on t.feed_version_id = st.feed_version_id
+								and t.trip_id = st.trip_id
+							where st.feed_version_id = s.feed_version_id
+								and st.stop_id = s.stop_id
+								and t.route_id in (${sqlIn(activeIds)})
+						)`
+						: sql``
+				}
+			order by s.stop_id
+		`
+	);
+	return rows;
+}
+
 export async function stopDetails(stopId: string): Promise<StopDetails | null> {
 	const db = getDb();
 	const rows = await rawQuery<{
@@ -349,10 +391,15 @@ export async function liveSnapshot(): Promise<LiveVehicle[]> {
 			lv.bearing,
 			lv.speed_mps as "speedMps",
 			lv.current_status as "currentStatus",
+			lv.current_stop_sequence as "currentStopSequence",
 			lv.occupancy,
 			lv.observed_at as "observedAt",
+			st_linelocatepoint(sl.geom, lv.geom) as "tripProgress",
 			vehicle_delay(lv.trip_id, lv.service_date, lv.observed_at) as "delayS"
 		from live_vehicles lv
+		left join trips t on t.trip_id = lv.trip_id
+		left join shape_lines sl
+			on sl.feed_version_id = t.feed_version_id and sl.shape_id = t.shape_id
 		where lv.observed_at > now() - interval '2 minutes'
 		order by lv.vehicle_key
 	`);
@@ -464,7 +511,9 @@ export async function snapshotAt(at: Date): Promise<VehicleSnapshot[]> {
 					bearing,
 					speed_mps,
 					current_status,
+					current_stop_sequence,
 					occupancy,
+					geom,
 					observed_at
 				from vehicle_positions
 				where observed_at <= ${toIso}::timestamptz
@@ -472,20 +521,25 @@ export async function snapshotAt(at: Date): Promise<VehicleSnapshot[]> {
 				order by vehicle_key, observed_at desc
 			)
 			select
-				vehicle_key as "vehicleKey",
-				vehicle_id as "vehicleId",
-				trip_id as "tripId",
-				route_id as "routeId",
-				lat,
-				lon,
-				bearing,
-				speed_mps as "speedMps",
-				current_status as "currentStatus",
-				occupancy,
-				observed_at as "observedAt",
-				vehicle_delay(trip_id, service_date, observed_at) as "delayS"
+				pos.vehicle_key as "vehicleKey",
+				pos.vehicle_id as "vehicleId",
+				pos.trip_id as "tripId",
+				pos.route_id as "routeId",
+				pos.lat,
+				pos.lon,
+				pos.bearing,
+				pos.speed_mps as "speedMps",
+				pos.current_status as "currentStatus",
+				pos.current_stop_sequence as "currentStopSequence",
+				pos.occupancy,
+				pos.observed_at as "observedAt",
+				st_linelocatepoint(sl.geom, pos.geom) as "tripProgress",
+				vehicle_delay(pos.trip_id, pos.service_date, pos.observed_at) as "delayS"
 			from pos
-			order by vehicle_key
+			left join trips t on t.trip_id = pos.trip_id
+			left join shape_lines sl
+				on sl.feed_version_id = t.feed_version_id and sl.shape_id = t.shape_id
+			order by pos.vehicle_key
 		`
 	);
 

@@ -37,6 +37,12 @@
 				Live map
 			</a>
 			<a
+				href="/coverage"
+				class="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+			>
+				Coverage
+			</a>
+			<a
 				href="/data"
 				class="rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 			>

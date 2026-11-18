@@ -70,6 +70,7 @@
 	let showSpeedZones = $state(false);
 	let showClearways = $state(false);
 	let showLive = $state(true);
+	let showProgressRing = $state(true);
 	let liveFromStream = $state<number | null>(null);
 	let mode = $state<'live' | 'history'>('live');
 	let bounds = $state<{ min: number; max: number } | null>(null);
@@ -859,6 +860,7 @@
 		{showSpeedZones}
 		{showClearways}
 		{showLive}
+		showProgressRing={showProgressRing}
 		history={mode === 'history' ? historyVehicles : null}
 		paused={mode === 'history'}
 		busyness={showBusyness ? heatFeatures : null}
@@ -1638,6 +1640,12 @@
 				</label>
 				{#if showLive}
 					<div class="space-y-1">
+						<label class="flex items-center justify-between gap-3 text-sm">
+							<span class="flex items-center gap-2">
+								<Route class="size-3.5 text-muted-foreground" /> Trip progress ring
+							</span>
+							<Switch bind:checked={showProgressRing} aria-label="Trip progress ring" />
+						</label>
 						<div class="flex items-end gap-3 text-[10px] text-muted-foreground">
 							<span class="flex flex-col items-center gap-1">
 								<span class="size-1.5 rounded-full bg-[#94a3b8]"></span> Many
@@ -1656,8 +1664,14 @@
 							</span>
 						</div>
 						<p class="text-[10px] text-muted-foreground">
-							Larger circles are fuller buses. Colour shows lateness; missing occupancy is
-							small and “Not reported” in the popup.
+							{#if showProgressRing}
+								Larger circles are fuller buses. Colour shows lateness. The white ring fills
+								clockwise with trip progress; missing occupancy is small and “Not reported” in
+								the popup.
+							{:else}
+								Larger circles are fuller buses. Colour shows lateness. The white border is the
+								marker outline; missing occupancy is small and “Not reported” in the popup.
+							{/if}
 						</p>
 					</div>
 				{/if}
