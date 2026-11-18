@@ -1622,6 +1622,31 @@
 					<span class="flex items-center gap-2"><Activity class="size-3.5 text-muted-foreground" /> Live vehicles</span>
 					<Switch bind:checked={showLive} />
 				</label>
+				{#if showLive}
+					<div class="space-y-1">
+						<div class="flex items-end gap-3 text-[10px] text-muted-foreground">
+							<span class="flex flex-col items-center gap-1">
+								<span class="size-1.5 rounded-full bg-[#94a3b8]"></span> Many
+							</span>
+							<span class="flex flex-col items-center gap-1">
+								<span class="size-2 rounded-full bg-[#94a3b8]"></span> Few
+							</span>
+							<span class="flex flex-col items-center gap-1">
+								<span class="size-2.5 rounded-full bg-[#94a3b8]"></span> Standing
+							</span>
+							<span class="flex flex-col items-center gap-1">
+								<span class="size-3 rounded-full bg-[#94a3b8]"></span> Crushed
+							</span>
+							<span class="flex flex-col items-center gap-1">
+								<span class="size-3.5 rounded-full bg-[#94a3b8]"></span> Full
+							</span>
+						</div>
+						<p class="text-[10px] text-muted-foreground">
+							Larger circles are fuller buses. Colour shows lateness; missing occupancy is
+							small and “Not reported” in the popup.
+						</p>
+					</div>
+				{/if}
 				<label
 					class="flex items-center justify-between gap-3 text-sm"
 					class:opacity-50={!selectedRoute}

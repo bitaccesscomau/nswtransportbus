@@ -13,6 +13,7 @@
 	} from 'maplibre-gl';
 	import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 	import type { FeatureCollection, Point } from 'geojson';
+	import type { ExpressionSpecification } from '@maplibre/maplibre-gl-style-spec';
 	import { haversineMeters } from '#lib/geo.js';
 	import { ROUTE_PACE_COLORS, ROUTE_PACE_SCALE } from '#lib/route-pace.js';
 	import { SLOWDOWN_COLORS, SLOWDOWN_SCALE } from '#lib/slowdown.js';
@@ -137,6 +138,70 @@
 		return 4;
 	}
 
+	function fullnessRank(occupancy: string | null | undefined): number {
+		switch (occupancy) {
+			case 'MANY_SEATS_AVAILABLE':
+				return 1;
+			case 'FEW_SEATS_AVAILABLE':
+				return 2;
+			case 'STANDING_ROOM_ONLY':
+				return 3;
+			case 'CRUSHED_STANDING_ROOM_ONLY':
+				return 4;
+			case 'FULL':
+				return 5;
+			default:
+				return 0;
+		}
+	}
+
+	function occupancyLabel(occupancy: string | null | undefined): string {
+		switch (occupancy) {
+			case 'MANY_SEATS_AVAILABLE':
+				return 'Many seats available';
+			case 'FEW_SEATS_AVAILABLE':
+				return 'Few seats available';
+			case 'STANDING_ROOM_ONLY':
+				return 'Standing room only';
+			case 'CRUSHED_STANDING_ROOM_ONLY':
+				return 'Crushed standing room only';
+			case 'FULL':
+				return 'Full';
+			case 'NOT_ACCEPTING_PASSENGERS':
+				return 'Not accepting passengers';
+			default:
+				return 'Not reported';
+		}
+	}
+
+	const delayColor = [
+		'match',
+		['get', 'delayClass'],
+		0,
+		'#94a3b8',
+		1,
+		'#0d9488',
+		2,
+		'#eab308',
+		3,
+		'#f97316',
+		4,
+		'#dc2626',
+		'#94a3b8'
+	] as unknown as ExpressionSpecification;
+
+	const liveRadius = [
+		'interpolate',
+		['linear'],
+		['zoom'],
+		8,
+		['+', 2.5, ['*', ['get', 'fullnessRank'], 0.55]],
+		13,
+		['+', 4, ['*', ['get', 'fullnessRank'], 1]],
+		18,
+		['+', 6, ['*', ['get', 'fullnessRank'], 1.5]]
+	] as unknown as ExpressionSpecification;
+
 	function featuresFrom(
 		vehicles: Map<string, VehicleSnapshot>,
 		positions: Map<string, { lat: number; lon: number }>
@@ -148,7 +213,11 @@
 				return {
 					type: 'Feature',
 					geometry: { type: 'Point', coordinates: [position.lon, position.lat] },
-					properties: { ...vehicle, delayClass: delayClass(vehicle.delayS) }
+					properties: {
+						...vehicle,
+						delayClass: delayClass(vehicle.delayS),
+						fullnessRank: fullnessRank(vehicle.occupancy)
+					}
 				};
 			})
 		};
@@ -223,7 +292,11 @@
 			features: vehicles.map((vehicle) => ({
 				type: 'Feature',
 				geometry: { type: 'Point', coordinates: [vehicle.lon, vehicle.lat] },
-				properties: { ...vehicle, delayClass: delayClass(vehicle.delayS) }
+				properties: {
+					...vehicle,
+					delayClass: delayClass(vehicle.delayS),
+					fullnessRank: fullnessRank(vehicle.occupancy)
+				}
 			}))
 		};
 	}
@@ -761,22 +834,8 @@
 			type: 'circle',
 			source: 'live',
 			paint: {
-				'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 3, 13, 5, 18, 8],
-				'circle-color': [
-					'match',
-					['get', 'delayClass'],
-					0,
-					'#94a3b8',
-					1,
-					'#0d9488',
-					2,
-					'#eab308',
-					3,
-					'#f97316',
-					4,
-					'#dc2626',
-					'#94a3b8'
-				],
+				'circle-radius': liveRadius,
+				'circle-color': delayColor,
 				'circle-opacity': 0.95,
 				'circle-stroke-color': '#ffffff',
 				'circle-stroke-width': 1.5
@@ -1040,6 +1099,7 @@
 						: delay <= -60
 							? `${Math.floor(-delay / 60)} min early`
 							: 'On time';
+			const fullness = occupancyLabel(vehicle.occupancy);
 
 			const nearby = (incidents?.features ?? [])
 				.map((incident) => {
@@ -1077,6 +1137,7 @@
 					`<div style="font-size:12px;line-height:1.5"><strong>Route ${route}</strong><br/>` +
 						`Vehicle ${escapeHtml(vehicle.vehicleId ?? '—')}<br/>` +
 						`${escapeHtml(delayText)}<br/>` +
+						`Fullness: ${escapeHtml(fullness)}<br/>` +
 						`Seen ${escapeHtml(seen)}` +
 						`<div style="margin-top:6px;border-top:1px solid #e5e7eb;padding-top:4px">` +
 						`<strong>Nearby disruptions</strong><br/>${disruptionHtml}</div></div>`
